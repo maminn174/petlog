@@ -1,0 +1,102 @@
+package com.petlog.common.exception;
+
+import com.petlog.auth.exception.EmailAlreadyExistsException;
+import com.petlog.events.exception.EventNotFoundException;
+import com.petlog.events.exception.EventValidationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(EmailAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleEmailAlreadyExists(
+        EmailAlreadyExistsException ex
+    ) {
+        HttpStatus status = HttpStatus.CONFLICT;
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            ex.getMessage()
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> methodArgumentNotValidException(
+        MethodArgumentNotValidException ex
+    ) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        String message = ex.getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .findFirst()
+            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+            .orElse("Validation failed");
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            message
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiError> badCredentialsException(
+        BadCredentialsException ex
+    ) {
+        HttpStatus status = HttpStatus.UNAUTHORIZED;
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            "Invalid email or password"
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+
+    @ExceptionHandler(EventNotFoundException.class)
+    public ResponseEntity<ApiError> eventNotFoundException(
+        EventNotFoundException ex
+    ) {
+        HttpStatus status = HttpStatus.NOT_FOUND;
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            ex.getMessage()
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+
+    @ExceptionHandler(EventValidationException.class)
+    public ResponseEntity<ApiError> eventValidationException(
+        EventValidationException ex
+    ) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            ex.getMessage()
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+}
