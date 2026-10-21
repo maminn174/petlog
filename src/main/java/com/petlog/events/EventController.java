@@ -4,11 +4,10 @@ import com.petlog.events.dto.*;
 import com.petlog.user.User;
 import com.petlog.user.UserService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/pets/{petId}/events")
@@ -16,15 +15,12 @@ public class EventController {
 
     private final EventService eventService;
     private final UserService userService;
-    private final EventRepository eventRepository;
 
     public EventController(EventService eventService,
-                           UserService userService,
-                           EventRepository eventRepository
+                           UserService userService
     ) {
         this.eventService = eventService;
         this.userService = userService;
-        this.eventRepository = eventRepository;
     }
 
     @PostMapping("/feeding")
@@ -46,16 +42,16 @@ public class EventController {
     }
 
     @GetMapping
-    public List<EventResponse> getAllEventsByPetId(
+    public Page<EventResponse> getAllEventsByPetId(
         @PathVariable Long petId,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size,
         Authentication authentication
     ) {
         User user = userService.getByEmail(authentication.getName());
-        List<Event> events = eventService.getAllByPetId(petId, user);
+        Page<Event> events = eventService.getAllByPetId(petId, user, page, size);
 
-        return events.stream()
-            .map(EventResponse::from)
-            .toList();
+        return events.map(EventResponse::from);
     }
 
     @PostMapping("/weight")
