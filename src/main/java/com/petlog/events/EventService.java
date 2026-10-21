@@ -9,13 +9,15 @@ import com.petlog.pet.PetService;
 import com.petlog.petmember.PetMemberService;
 import com.petlog.user.User;
 import com.petlog.user.UserService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -42,17 +44,20 @@ public class EventService {
         this.eventValidator = eventValidator;
     }
 
-    public List<Event> getAllByPetId(
+    public Page<Event> getAllByPetId(
         Long petId,
-        User currentUser
+        User currentUser,
+        int page,
+        int size
     ) {
+        Pageable pageable = PageRequest.of(page, size);
+
         petService.getByIdForUser(
             petId,
             currentUser
         );
-        return eventRepository.findAllByDeletedAtIsNullAndPet_IdOrderByOccurredAtDesc(
-            petId
-        );
+        return eventRepository
+            .findAllByDeletedAtIsNullAndPet_IdOrderByOccurredAtDescIdDesc(petId, pageable);
     }
 
     @Transactional
