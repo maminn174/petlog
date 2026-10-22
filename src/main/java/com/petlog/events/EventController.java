@@ -1,8 +1,6 @@
 package com.petlog.events;
 
 import com.petlog.events.dto.*;
-import com.petlog.user.User;
-import com.petlog.user.UserService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -14,13 +12,9 @@ import org.springframework.web.bind.annotation.*;
 public class EventController {
 
     private final EventService eventService;
-    private final UserService userService;
 
-    public EventController(EventService eventService,
-                           UserService userService
-    ) {
+    public EventController(EventService eventService) {
         this.eventService = eventService;
-        this.userService = userService;
     }
 
     @PostMapping("/feeding")
@@ -30,11 +24,10 @@ public class EventController {
         Authentication authentication
     ) {
         String email = authentication.getName();
-        User user = userService.getByEmail(email);
 
         Event event = eventService.createFeeding(
             petId,
-            user,
+            email,
             request
         );
 
@@ -48,8 +41,8 @@ public class EventController {
         @RequestParam(defaultValue = "20") int size,
         Authentication authentication
     ) {
-        User user = userService.getByEmail(authentication.getName());
-        Page<Event> events = eventService.getAllByPetId(petId, user, page, size);
+        String email = authentication.getName();
+        Page<Event> events = eventService.getAllByPetId(petId, email, page, size);
 
         return events.map(EventResponse::from);
     }
@@ -61,11 +54,10 @@ public class EventController {
         Authentication authentication
     ) {
         String email = authentication.getName();
-        User user = userService.getByEmail(email);
 
         Event event = eventService.createWeight(
             petId,
-            user,
+            email,
             request
         );
 
@@ -79,11 +71,10 @@ public class EventController {
         Authentication authentication
     ) {
         String email = authentication.getName();
-        User user = userService.getByEmail(email);
 
         Event event = eventService.createNote(
             petId,
-            user,
+            email,
             request
         );
 
@@ -97,11 +88,10 @@ public class EventController {
         Authentication authentication
     ) {
         String email = authentication.getName();
-        User user = userService.getByEmail(email);
 
         Event event = eventService.createWalk(
             petId,
-            user,
+            email,
             request
         );
 
