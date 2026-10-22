@@ -3,7 +3,6 @@ package com.petlog.events;
 import com.petlog.events.dto.*;
 import com.petlog.events.exception.EventNotFoundException;
 import com.petlog.events.exception.EventValidationException;
-import com.petlog.events.validation.EventValidator;
 import com.petlog.pet.Pet;
 import com.petlog.pet.PetService;
 import com.petlog.petmember.PetMemberService;
@@ -210,7 +209,7 @@ public class EventService {
                 participant,
                 pet
             )) {
-                throw new IllegalArgumentException("Participant is not a member of this pet");
+                throw new EventValidationException("Participant is not a member of this pet");
             }
 
             data.put(
@@ -256,10 +255,6 @@ public class EventService {
     ) {
         Event event = getEventForUser(petId, eventId, email);
 
-        if (request.occurredAt() != null) {
-            event.setOccurredAt(request.occurredAt());
-        }
-
         if (request.data() != null) {
             Map<String, Object> currentData = new HashMap<>(event.getData());
             currentData.putAll(request.data());
@@ -287,6 +282,10 @@ public class EventService {
             }
 
             event.setData(currentData);
+        }
+
+        if (request.occurredAt() != null) {
+            event.setOccurredAt(request.occurredAt());
         }
 
         return EventResponse.from(event);

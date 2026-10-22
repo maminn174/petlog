@@ -1,5 +1,6 @@
 package com.petlog.events.validation;
 
+import com.petlog.events.EventValidator;
 import com.petlog.events.exception.EventValidationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -15,6 +16,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class EventValidatorWeightTest {
 
     private final EventValidator validator = new EventValidator();
+
+    @Test
+    void shouldRejectBooleanWeight() {
+        EventValidationException exception = assertThrows(EventValidationException.class,
+            () -> validator.validateWeight(Map.of("weightKg", true)));
+
+        assertEquals("weight must be a positive number", exception.getMessage());
+    }
 
     @ParameterizedTest
     @ValueSource(doubles = {1.0, 7.4, 25.5})

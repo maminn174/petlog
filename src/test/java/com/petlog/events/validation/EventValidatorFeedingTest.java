@@ -1,5 +1,6 @@
 package com.petlog.events.validation;
 
+import com.petlog.events.EventValidator;
 import com.petlog.events.exception.EventValidationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -15,6 +16,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class EventValidatorFeedingTest {
 
     private final EventValidator validator = new EventValidator();
+
+    @Test
+    void shouldRejectBooleanAmount() {
+        EventValidationException exception = assertThrows(EventValidationException.class,
+            () -> validator.validateFeeding(Map.of("amountGrams", true)));
+
+        assertEquals("amountGrams must be a positive number", exception.getMessage());
+    }
 
     @Test
     void shouldAcceptFeedingWithoutAmount() {

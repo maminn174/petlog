@@ -1,5 +1,6 @@
 package com.petlog.events.validation;
 
+import com.petlog.events.EventValidator;
 import com.petlog.events.exception.EventValidationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,6 +17,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class EventValidatorNoteTest {
 
     private final EventValidator validator = new EventValidator();
+
+    @Test
+    void shouldRejectMissingTitle() {
+        EventValidationException exception = assertThrows(EventValidationException.class,
+            () -> validator.validateNote(Map.of()));
+
+        assertEquals("title must not be blank", exception.getMessage());
+    }
+
+    @Test
+    void shouldRejectNonStringTitle() {
+        EventValidationException exception = assertThrows(EventValidationException.class,
+            () -> validator.validateNote(Map.of("title", 123)));
+
+        assertEquals("title must be a string", exception.getMessage());
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {

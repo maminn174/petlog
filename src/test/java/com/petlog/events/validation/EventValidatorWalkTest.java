@@ -1,5 +1,6 @@
 package com.petlog.events.validation;
 
+import com.petlog.events.EventValidator;
 import com.petlog.events.exception.EventValidationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -12,6 +13,28 @@ import static org.junit.jupiter.api.Assertions.*;
 class EventValidatorWalkTest {
 
     private final EventValidator validator = new EventValidator();
+
+    @Test
+    void shouldRejectNonStringStartTime() {
+        EventValidationException exception = assertThrows(EventValidationException.class,
+            () -> validator.validateWalk(Map.of(
+                "startTime", 123, "endTime", "2026-10-22T11:00:00+03:00"
+            )));
+
+        assertEquals("startTime must be a string", exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void shouldRejectWalkWithNonPositiveParticipantId(long participantId) {
+        EventValidationException exception = assertThrows(EventValidationException.class,
+            () -> validator.validateWalk(Map.of(
+                "startTime", "2026-10-22T10:00:00+03:00",
+                "endTime", "2026-10-22T11:00:00+03:00", "participantId", participantId
+            )));
+
+        assertEquals("participantId must be positive", exception.getMessage());
+    }
 
     @Test
     void shouldAcceptValidWalk() {
@@ -99,6 +122,7 @@ class EventValidatorWalkTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "", " ", "2026-02-30T10:00:00+03:00", "2026-10-22T25:00:00+03:00",
         "abc",
         "2026-99-99",
         "2026-10-22T10:00:00"
@@ -120,6 +144,7 @@ class EventValidatorWalkTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "", " ", "2026-02-30T10:00:00+03:00", "2026-10-22T25:00:00+03:00",
         "abc",
         "2026-99-99",
         "2026-10-22T10:00:00"

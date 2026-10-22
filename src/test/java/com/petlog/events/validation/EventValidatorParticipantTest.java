@@ -1,5 +1,6 @@
 package com.petlog.events.validation;
 
+import com.petlog.events.EventValidator;
 import com.petlog.events.exception.EventValidationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -58,7 +59,7 @@ class EventValidatorParticipantTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"123", "abc"})
+    @ValueSource(strings = {"123", "abc", "", " "})
     void shouldRejectNonIntegerId(String id) {
 
         EventValidationException exception = assertThrows(
