@@ -3,7 +3,6 @@ package com.petlog.events.validation;
 
 import com.petlog.events.exception.EventValidationException;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -26,7 +25,9 @@ public class EventValidator {
             );
         }
 
-        if ((number.doubleValue() < 0)) {
+        double grams = number.doubleValue();
+
+        if (grams <= 0 || !Double.isFinite(grams)) {
             throw new EventValidationException(
                 "amountGrams must be a positive number"
             );
@@ -38,7 +39,7 @@ public class EventValidator {
         Object weightKg = data.get("weightKg");
 
         if (weightKg == null) {
-            throw new EventValidationException("Weight cannot be null");
+            throw new EventValidationException("weight cannot be null");
         }
 
         if (!(weightKg instanceof Number number)) {
@@ -47,7 +48,9 @@ public class EventValidator {
             );
         }
 
-        if ((number.doubleValue() <= 0)) {
+        double weight = number.doubleValue();
+
+        if (weight <= 0 || !Double.isFinite(weight)) {
             throw new EventValidationException(
                 "weight must be a positive number"
             );
@@ -57,18 +60,43 @@ public class EventValidator {
     public void validateNote(Map<String, Object> data) {
 
         Object description = data.get("description");
+        Object title = data.get("title");
+
+        if (title == null) {
+            throw new EventValidationException(
+                "title must not be blank"
+            );
+        }
+
+        if (!(title instanceof String stringTitle)) {
+            throw new EventValidationException(
+                "title must be a string"
+            );
+        }
+
+        if (stringTitle.isBlank()) {
+            throw new EventValidationException(
+                "title must not be blank"
+            );
+        }
+
+        if (stringTitle.length() > 150) {
+            throw new EventValidationException(
+                "title length cannot be over 150 characters"
+            );
+        }
 
         if (description == null) {
             return;
         }
 
-        if (!(description instanceof String string)) {
+        if (!(description instanceof String stringDescription)) {
             throw new EventValidationException(
                 "description must be a string"
             );
         }
 
-        if ((string.isBlank())) {
+        if (stringDescription.isBlank()) {
             throw new EventValidationException(
                 "description must not be blank"
             );
