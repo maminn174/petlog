@@ -3,7 +3,6 @@ package com.petlog.events;
 import com.petlog.events.dto.*;
 import com.petlog.events.exception.EventNotFoundException;
 import com.petlog.events.exception.EventValidationException;
-import com.petlog.events.validation.EventValidator;
 import com.petlog.pet.Pet;
 import com.petlog.pet.PetService;
 import com.petlog.petmember.PetMemberService;
@@ -46,15 +45,17 @@ public class EventService {
 
     public Page<Event> getAllByPetId(
         Long petId,
-        User currentUser,
+        String email,
         int page,
         int size
     ) {
+        User user = userService.getByEmail(email);
+
         Pageable pageable = PageRequest.of(page, size);
 
         petService.getByIdForUser(
             petId,
-            currentUser
+            user
         );
         return eventRepository
             .findAllByDeletedAtIsNullAndPet_IdOrderByOccurredAtDescIdDesc(petId, pageable);
@@ -63,12 +64,14 @@ public class EventService {
     @Transactional
     public Event createFeeding(
         Long petId,
-        User createdBy,
+        String email,
         CreateFeedingRequest request
     ) {
+        User user = userService.getByEmail(email);
+
         Pet pet = petService.getByIdForUser(
             petId,
-            createdBy
+            user
         );
         Map<String, Object> data = new HashMap<>();
 
@@ -88,8 +91,10 @@ public class EventService {
             );
         }
 
+        eventValidator.validateFeeding(data);
+
         Event event = new Event(
-            createdBy,
+            user,
             pet,
             EventType.FEEDING,
             request.occurredAt(),
@@ -102,12 +107,14 @@ public class EventService {
     @Transactional
     public Event createWeight(
         Long petId,
-        User createdBy,
+        String email,
         CreateWeightRequest request
     ) {
+        User user = userService.getByEmail(email);
+
         Pet pet = petService.getByIdForUser(
             petId,
-            createdBy
+            user
         );
         Map<String, Object> data = new HashMap<>();
 
@@ -120,8 +127,10 @@ public class EventService {
             request.comment()
         );
 
+        eventValidator.validateWeight(data);
+
         Event event = new Event(
-            createdBy,
+            user,
             pet,
             EventType.WEIGHT,
             request.occurredAt(),
@@ -134,12 +143,14 @@ public class EventService {
     @Transactional
     public Event createNote(
         Long petId,
-        User createdBy,
+        String email,
         CreateNoteRequest request
     ) {
+        User user = userService.getByEmail(email);
+
         Pet pet = petService.getByIdForUser(
             petId,
-            createdBy
+            user
         );
         Map<String, Object> data = new HashMap<>();
 
@@ -152,8 +163,10 @@ public class EventService {
             request.description()
         );
 
+        eventValidator.validateNote(data);
+
         Event event = new Event(
-            createdBy,
+            user,
             pet,
             EventType.NOTE,
             request.occurredAt(),
@@ -166,26 +179,23 @@ public class EventService {
     @Transactional
     public Event createWalk(
         Long petId,
-        User createdBy,
+        String email,
         CreateWalkRequest request
     ) {
+        User user = userService.getByEmail(email);
+
         Pet pet = petService.getByIdForUser(
             petId,
-            createdBy
+            user
         );
         Map<String, Object> data = new HashMap<>();
-
-        if (!request.endTime().isAfter(request.startTime())) {
-            throw new EventValidationException(
-                "The end time of the walk must be later than the start time"
-            );
-        }
 
         data.put(
             "startTime",
             request.startTime()
                 .toString()
         );
+
         data.put(
             "endTime",
             request.endTime()
@@ -199,7 +209,7 @@ public class EventService {
                 participant,
                 pet
             )) {
-                throw new IllegalArgumentException("Participant is not a member of this pet");
+                throw new EventValidationException("Participant is not a member of this pet");
             }
 
             data.put(
@@ -213,8 +223,10 @@ public class EventService {
             request.comment()
         );
 
+        eventValidator.validateWalk(data);
+
         Event event = new Event(
-            createdBy,
+            user,
             pet,
             EventType.WALK,
             request.startTime(),
@@ -229,21 +241,7 @@ public class EventService {
         Long eventId,
         String email
     ) {
-        User user = userService.getByEmail(email);
-        Pet pet = petService.getById(petId);
-
-        if (!petMemberService.hasAccess(
-            user,
-            pet
-        )) {
-            throw new AccessDeniedException("Access denied to this pet");
-        }
-
-        Event event = eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(
-                eventId,
-                petId
-            )
-            .orElseThrow(() -> new EventNotFoundException(eventId));
+        Event event = getEventForUser(petId, eventId, email);
 
         return EventResponse.from(event);
     }
@@ -255,25 +253,7 @@ public class EventService {
         String email,
         UpdateEventRequest request
     ) {
-        User user = userService.getByEmail(email);
-        Pet pet = petService.getById(petId);
-
-        if (!petMemberService.hasAccess(
-            user,
-            pet
-        )) {
-            throw new AccessDeniedException("Access denied to this pet");
-        }
-
-        Event event = eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(
-                eventId,
-                petId
-            )
-            .orElseThrow(() -> new EventNotFoundException(eventId));
-
-        if (request.occurredAt() != null) {
-            event.setOccurredAt(request.occurredAt());
-        }
+        Event event = getEventForUser(petId, eventId, email);
 
         if (request.data() != null) {
             Map<String, Object> currentData = new HashMap<>(event.getData());
@@ -292,7 +272,7 @@ public class EventService {
                         long id = ((Number)participantId).longValue();
                         User participantUser = userService.getById(id);
 
-                        if (!petMemberService.hasAccess(participantUser, pet)) {
+                        if (!petMemberService.hasAccess(participantUser, event.getPet())) {
                             throw new EventValidationException(
                                 "Participant is not a member of this pet"
                             );
@@ -304,6 +284,10 @@ public class EventService {
             event.setData(currentData);
         }
 
+        if (request.occurredAt() != null) {
+            event.setOccurredAt(request.occurredAt());
+        }
+
         return EventResponse.from(event);
     }
 
@@ -313,23 +297,25 @@ public class EventService {
         Long eventId,
         String email
     ) {
+        Event event = getEventForUser(petId, eventId, email);
 
+        event.setDeletedAt(OffsetDateTime.now());
+    }
+
+    private Event getEventForUser(
+        Long petId,
+        Long eventId,
+        String email
+    ) {
         User user = userService.getByEmail(email);
         Pet pet = petService.getById(petId);
 
-        if (!petMemberService.hasAccess(
-            user,
-            pet
-        )) {
+        if (!petMemberService.hasAccess(user, pet)) {
             throw new AccessDeniedException("Access denied to this pet");
         }
 
-        Event event = eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(
-                eventId,
-                petId
-            )
+        return eventRepository
+            .findByDeletedAtIsNullAndIdAndPet_Id(eventId, petId)
             .orElseThrow(() -> new EventNotFoundException(eventId));
-
-        event.setDeletedAt(OffsetDateTime.now());
     }
 }
