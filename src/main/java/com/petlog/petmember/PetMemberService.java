@@ -40,4 +40,12 @@ public class PetMemberService {
     public boolean hasAccess(User user, Pet pet) {
         return petMemberRepository.existsByUserAndPet(user, pet);
     }
+
+    public boolean hasRole(
+        User user,
+        Pet pet,
+        Role role
+    ) {
+        return petMemberRepository.existsByUserAndPetAndRole(user, pet, role);
+    }
 }

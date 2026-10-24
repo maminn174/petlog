@@ -13,4 +13,10 @@ public interface PetMemberRepository extends JpaRepository<PetMember, PetMemberI
     List<PetMember> findByUser(User user);
 
     boolean existsByUserAndPet(User user, Pet pet);
+
+    boolean existsByUserAndPetAndRole(
+        User user,
+        Pet pet,
+        Role role
+    );
 }
