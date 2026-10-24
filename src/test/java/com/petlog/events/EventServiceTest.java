@@ -36,7 +36,7 @@ import static org.mockito.Mockito.*;
 
 
 @ExtendWith(MockitoExtension.class)
-public class EventServiceTest {
+class EventServiceTest {
 
     @Mock
     private EventRepository eventRepository;
