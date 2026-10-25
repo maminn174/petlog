@@ -6,6 +6,7 @@ import com.petlog.events.exception.EventValidationException;
 import com.petlog.pet.Pet;
 import com.petlog.pet.PetService;
 import com.petlog.petmember.PetMemberService;
+import com.petlog.petmember.Role;
 import com.petlog.user.User;
 import com.petlog.user.UserService;
 import org.springframework.data.domain.Page;
@@ -73,6 +74,9 @@ public class EventService {
             petId,
             user
         );
+
+        petMemberService.requireMemberOrOwner(user, pet);
+
         Map<String, Object> data = new HashMap<>();
 
         data.put(
@@ -116,6 +120,9 @@ public class EventService {
             petId,
             user
         );
+
+        petMemberService.requireMemberOrOwner(user, pet);
+
         Map<String, Object> data = new HashMap<>();
 
         data.put(
@@ -152,6 +159,9 @@ public class EventService {
             petId,
             user
         );
+
+        petMemberService.requireMemberOrOwner(user, pet);
+
         Map<String, Object> data = new HashMap<>();
 
         data.put(
@@ -188,6 +198,9 @@ public class EventService {
             petId,
             user
         );
+
+        petMemberService.requireMemberOrOwner(user, pet);
+
         Map<String, Object> data = new HashMap<>();
 
         data.put(
@@ -254,6 +267,9 @@ public class EventService {
         UpdateEventRequest request
     ) {
         Event event = getEventForUser(petId, eventId, email);
+        User user = userService.getByEmail(email);
+
+        requireCanModifyEvent(user, event);
 
         if (request.data() != null) {
             Map<String, Object> currentData = new HashMap<>(event.getData());
@@ -298,6 +314,7 @@ public class EventService {
         String email
     ) {
         Event event = getEventForUser(petId, eventId, email);
+        requireCanModifyEvent(userService.getByEmail(email), event);
 
         event.setDeletedAt(OffsetDateTime.now());
     }
@@ -317,5 +334,22 @@ public class EventService {
         return eventRepository
             .findByDeletedAtIsNullAndIdAndPet_Id(eventId, petId)
             .orElseThrow(() -> new EventNotFoundException(eventId));
+    }
+
+    private void requireCanModifyEvent(
+        User user,
+        Event event
+    ) {
+        Pet pet = event.getPet();
+
+        boolean isOwner = petMemberService.hasRole(user, pet, Role.OWNER);
+        boolean isMember = petMemberService.hasRole(user, pet, Role.MEMBER);
+        boolean isAuthor = user.getId().equals(
+            event.getCreatedBy().getId()
+        );
+
+        if (!(isOwner || (isMember && isAuthor))) {
+            throw new AccessDeniedException("Access denied");
+        }
     }
 }
