@@ -2,6 +2,7 @@ package com.petlog.petmember;
 
 import com.petlog.pet.Pet;
 import com.petlog.user.User;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -47,5 +48,17 @@ public class PetMemberService {
         Role role
     ) {
         return petMemberRepository.existsByUserAndPetAndRole(user, pet, role);
+    }
+
+    public void requireMemberOrOwner(
+        User user,
+        Pet pet
+    ) {
+        boolean isOwner = hasRole(user, pet, Role.OWNER);
+        boolean isMember = hasRole(user, pet, Role.MEMBER);
+
+        if (!isMember && !isOwner) {
+            throw new AccessDeniedException("Access denied");
+        }
     }
 }
