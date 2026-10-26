@@ -67,6 +67,13 @@ public class PetMemberService {
         );
     }
 
+    public void requireMemberOrOwner(User user, Pet pet) {
+        if (!hasRole(user, pet, Role.OWNER)
+            && !hasRole(user, pet, Role.MEMBER)) {
+            throw new AccessDeniedException("Access denied");
+        }
+    }
+
     @Transactional
     public void changeRole(
         User currentUser,
