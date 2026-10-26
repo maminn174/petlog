@@ -6,6 +6,7 @@ import com.petlog.events.exception.EventValidationException;
 import com.petlog.pet.Pet;
 import com.petlog.pet.PetService;
 import com.petlog.petmember.PetMemberService;
+import com.petlog.petmember.Role;
 import com.petlog.user.User;
 import com.petlog.user.UserService;
 import org.junit.jupiter.api.DisplayName;
@@ -23,7 +24,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -84,9 +84,79 @@ class EventServiceTest {
             new HashMap<>(Map.of("amountGrams", 80, "comment", "Morning feeding")));
     }
 
+    private void configureRole(Role role) {
+        when(petMemberService.hasRole(user, pet, Role.OWNER)).thenReturn(role == Role.OWNER);
+        when(petMemberService.hasRole(user, pet, Role.MEMBER)).thenReturn(role == Role.MEMBER);
+    }
+
+    private void allowEventModification() {
+        configureRole(Role.OWNER);
+        when(user.getId()).thenReturn(1L);
+    }
+
     @Nested
     @DisplayName("Создание событий")
     class Creation {
+
+        @Test
+        void shouldNotCreateFeedingWhenViewer() {
+            allowCreation();
+            configureRole(Role.VIEWER);
+            doCallRealMethod().when(petMemberService).requireMemberOrOwner(user, pet);
+            CreateFeedingRequest request = new CreateFeedingRequest(80, Appetite.GOOD, "Morning feeding", OCCURRED_AT);
+
+            assertThrows(AccessDeniedException.class,
+                () -> eventService.createFeeding(PET_ID, EMAIL, request));
+
+            verify(petMemberService).requireMemberOrOwner(user, pet);
+            verifyNoInteractions(eventRepository, eventValidator);
+        }
+
+        @Test
+        void shouldCreateFeedingWhenMember() {
+            allowCreation();
+            configureRole(Role.MEMBER);
+            doCallRealMethod().when(petMemberService).requireMemberOrOwner(user, pet);
+            CreateFeedingRequest request = new CreateFeedingRequest(80, Appetite.GOOD, "Morning feeding", OCCURRED_AT);
+            Map<String, Object> expectedData = Map.of(
+                "amountGrams", 80, "appetite", "GOOD", "comment", "Morning feeding"
+            );
+            when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Event result = eventService.createFeeding(PET_ID, EMAIL, request);
+
+            assertSame(user, result.getCreatedBy());
+            assertSame(pet, result.getPet());
+            assertEquals(EventType.FEEDING, result.getType());
+            assertEquals(OCCURRED_AT, result.getOccurredAt());
+            assertEquals(expectedData, result.getData());
+            verify(petMemberService).requireMemberOrOwner(user, pet);
+            verify(eventValidator).validateFeeding(expectedData);
+            verify(eventRepository).save(result);
+        }
+
+        @Test
+        void shouldCreateFeedingWhenOwner() {
+            allowCreation();
+            configureRole(Role.OWNER);
+            doCallRealMethod().when(petMemberService).requireMemberOrOwner(user, pet);
+            CreateFeedingRequest request = new CreateFeedingRequest(80, Appetite.GOOD, "Morning feeding", OCCURRED_AT);
+            Map<String, Object> expectedData = Map.of(
+                "amountGrams", 80, "appetite", "GOOD", "comment", "Morning feeding"
+            );
+            when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Event result = eventService.createFeeding(PET_ID, EMAIL, request);
+
+            assertSame(user, result.getCreatedBy());
+            assertSame(pet, result.getPet());
+            assertEquals(EventType.FEEDING, result.getType());
+            assertEquals(OCCURRED_AT, result.getOccurredAt());
+            assertEquals(expectedData, result.getData());
+            verify(petMemberService).requireMemberOrOwner(user, pet);
+            verify(eventValidator).validateFeeding(expectedData);
+            verify(eventRepository).save(result);
+        }
 
         @Test
         void shouldCreateFeedingSuccessfully() {
@@ -135,26 +205,6 @@ class EventServiceTest {
 
             verify(eventValidator).validateFeeding(invalidData);
             verifyNoInteractions(eventRepository);
-        }
-
-
-        @Test
-        void shouldCreateWeightSuccessfully() {
-            allowCreation();
-            BigDecimal weight = new BigDecimal("5.25");
-            CreateWeightRequest request = new CreateWeightRequest(OCCURRED_AT, weight, "Weekly weight");
-            Map<String, Object> expectedData = Map.of("weightKg", weight, "comment", "Weekly weight");
-            when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-            Event result = eventService.createWeight(PET_ID, EMAIL, request);
-
-            assertSame(user, result.getCreatedBy());
-            assertSame(pet, result.getPet());
-            assertEquals(EventType.WEIGHT, result.getType());
-            assertEquals(OCCURRED_AT, result.getOccurredAt());
-            assertEquals(expectedData, result.getData());
-            verify(eventValidator).validateWeight(expectedData);
-            verify(eventRepository).save(result);
         }
 
         @Test
@@ -227,8 +277,104 @@ class EventServiceTest {
     class Updating {
 
         @Test
+        void shouldUpdateEventWhenOwnerIsNotAuthor() {
+            configureEventAccess(true);
+            configureRole(Role.OWNER);
+            User author = mock(User.class);
+            when(user.getId()).thenReturn(1L);
+            when(author.getId()).thenReturn(2L);
+            Event event = new Event(author, pet, EventType.FEEDING, OCCURRED_AT,
+                new HashMap<>(Map.of("amountGrams", 80)));
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            OffsetDateTime newOccurredAt = OCCURRED_AT.plusHours(1);
+            Map<String, Object> expectedData = Map.of("amountGrams", 100);
+
+            EventResponse response = eventService.update(PET_ID, EVENT_ID, EMAIL,
+                new UpdateEventRequest(newOccurredAt, expectedData));
+
+            assertEquals(expectedData, response.data());
+            assertEquals(expectedData, event.getData());
+            assertEquals(newOccurredAt, response.occurredAt());
+            assertEquals(newOccurredAt, event.getOccurredAt());
+            assertSame(author, event.getCreatedBy());
+            verify(eventValidator).validateFeeding(expectedData);
+            verify(eventRepository).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
+            verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldUpdateEventWhenMemberIsAuthor() {
+            configureEventAccess(true);
+            configureRole(Role.MEMBER);
+            when(user.getId()).thenReturn(1L);
+            Event event = feedingEvent();
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            OffsetDateTime newOccurredAt = OCCURRED_AT.plusHours(1);
+            Map<String, Object> expectedData = Map.of("amountGrams", 100, "comment", "Morning feeding");
+
+            EventResponse response = eventService.update(PET_ID, EVENT_ID, EMAIL,
+                new UpdateEventRequest(newOccurredAt, Map.of("amountGrams", 100)));
+
+            assertEquals(expectedData, response.data());
+            assertEquals(expectedData, event.getData());
+            assertEquals(newOccurredAt, response.occurredAt());
+            assertEquals(newOccurredAt, event.getOccurredAt());
+            verify(eventValidator).validateFeeding(expectedData);
+            verify(eventRepository).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
+            verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldNotUpdateEventWhenMemberIsNotAuthor() {
+            configureEventAccess(true);
+            configureRole(Role.MEMBER);
+            User author = mock(User.class);
+            when(user.getId()).thenReturn(1L);
+            when(author.getId()).thenReturn(2L);
+            Event event = new Event(author, pet, EventType.FEEDING, OCCURRED_AT,
+                new HashMap<>(Map.of("amountGrams", 80)));
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(OCCURRED_AT.plusHours(1), Map.of("amountGrams", 100));
+
+            assertThrows(AccessDeniedException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
+
+            assertEquals(originalData, event.getData());
+            assertEquals(OCCURRED_AT, event.getOccurredAt());
+            verifyNoInteractions(eventValidator);
+            verify(eventRepository).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
+            verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldNotUpdateEventWhenViewer() {
+            configureEventAccess(true);
+            configureRole(Role.VIEWER);
+            when(user.getId()).thenReturn(1L);
+            Event event = feedingEvent();
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(OCCURRED_AT.plusHours(1), Map.of("amountGrams", 100));
+
+            assertThrows(AccessDeniedException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
+
+            assertEquals(originalData, event.getData());
+            assertEquals(OCCURRED_AT, event.getOccurredAt());
+            verifyNoInteractions(eventValidator);
+            verify(eventRepository).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
+            verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
         void shouldUpdateFeedingSuccessfully() {
             configureEventAccess(true);
+            allowEventModification();
             Event event = feedingEvent();
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
                 .thenReturn(Optional.of(event));
@@ -248,6 +394,7 @@ class EventServiceTest {
         @Test
         void shouldUpdateOccurredAtSuccessfully() {
             configureEventAccess(true);
+            allowEventModification();
             Event event = feedingEvent();
             Map<String, Object> originalData = new HashMap<>(event.getData());
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
@@ -267,6 +414,7 @@ class EventServiceTest {
         @Test
         void shouldNotChangeOccurredAtWhenFeedingValidationFails() {
             configureEventAccess(true);
+            allowEventModification();
             Event event = feedingEvent();
             Map<String, Object> originalData = new HashMap<>(event.getData());
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
@@ -288,6 +436,7 @@ class EventServiceTest {
         @Test
         void shouldRejectWalkUpdateWithInvalidParticipant() {
             configureEventAccess(true);
+            allowEventModification();
             Long participantId = 2L;
             User participant = mock(User.class);
             Map<String, Object> originalData = Map.of(
@@ -319,6 +468,7 @@ class EventServiceTest {
         @Test
         void shouldRejectInvalidFeedingUpdate() {
             configureEventAccess(true);
+            allowEventModification();
             Event event = feedingEvent();
             Map<String, Object> originalData = new HashMap<>(event.getData());
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
@@ -367,6 +517,25 @@ class EventServiceTest {
     @Nested
     @DisplayName("Получение событий")
     class Retrieval {
+
+        @Test
+        void shouldGetEventsWhenViewer() {
+            allowCreation();
+            PageRequest pageable = PageRequest.of(0, 10);
+            Event event = feedingEvent();
+            Page<Event> expectedPage = new PageImpl<>(List.of(event), pageable, 1);
+            when(eventRepository.findAllByDeletedAtIsNullAndPet_IdOrderByOccurredAtDescIdDesc(PET_ID, pageable))
+                .thenReturn(expectedPage);
+
+            Page<Event> result = eventService.getAllByPetId(PET_ID, EMAIL, 0, 10);
+
+            assertSame(expectedPage, result);
+            assertEquals(List.of(event), result.getContent());
+            assertEquals(1, result.getTotalElements());
+            verify(petService).getByIdForUser(PET_ID, user);
+            verify(eventRepository).findAllByDeletedAtIsNullAndPet_IdOrderByOccurredAtDescIdDesc(PET_ID, pageable);
+            verifyNoInteractions(petMemberService, eventValidator);
+        }
 
         @Test
         void shouldGetEventByIdSuccessfully() {
@@ -448,8 +617,45 @@ class EventServiceTest {
     class Deletion {
 
         @Test
+        void shouldDeleteEventWhenOwnerIsNotAuthor() {
+            configureEventAccess(true);
+            configureRole(Role.OWNER);
+            User author = mock(User.class);
+            when(user.getId()).thenReturn(1L);
+            when(author.getId()).thenReturn(2L);
+            Event event = new Event(author, pet, EventType.FEEDING, OCCURRED_AT,
+                new HashMap<>(Map.of("amountGrams", 80)));
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            eventService.delete(PET_ID, EVENT_ID, EMAIL);
+
+            assertNotNull(event.getDeletedAt());
+            verify(eventRepository).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
+            verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldNotDeleteEventWhenViewer() {
+            configureEventAccess(true);
+            configureRole(Role.VIEWER);
+            when(user.getId()).thenReturn(1L);
+            Event event = feedingEvent();
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            assertThrows(AccessDeniedException.class,
+                () -> eventService.delete(PET_ID, EVENT_ID, EMAIL));
+
+            assertNull(event.getDeletedAt());
+            verify(eventRepository).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
+            verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
         void shouldSoftDeleteEventSuccessfully() {
             configureEventAccess(true);
+            allowEventModification();
             Event event = feedingEvent();
             Map<String, Object> originalData = new HashMap<>(event.getData());
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
@@ -495,6 +701,7 @@ class EventServiceTest {
         @Test
         void shouldNotDeleteAlreadyDeletedEvent() {
             configureEventAccess(true);
+            allowEventModification();
             Event event = feedingEvent();
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
                 .thenAnswer(invocation -> event.getDeletedAt() == null ? Optional.of(event) : Optional.empty());
@@ -508,6 +715,68 @@ class EventServiceTest {
             assertEquals(deletedAt, event.getDeletedAt());
             verify(eventRepository, times(2)).findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID);
             verifyNoMoreInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldNotDeleteEventWhenMemberIsNotAuthor() {
+
+            configureEventAccess(true);
+
+            User author = mock(User.class);
+            Event event = new Event(
+                author,
+                pet,
+                EventType.FEEDING,
+                OCCURRED_AT,
+                new HashMap<>(Map.of("amountGrams", 80))
+            );
+
+            when(petMemberService.hasRole(user, pet, Role.OWNER))
+                .thenReturn(false);
+
+            when(petMemberService.hasRole(user, pet, Role.MEMBER))
+                .thenReturn(true);
+
+            when(user.getId()).thenReturn(1L);
+            when(author.getId()).thenReturn(2L);
+
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            assertThrows(
+                AccessDeniedException.class,
+                () -> eventService.delete(PET_ID, EVENT_ID, EMAIL)
+            );
+
+            assertNull(event.getDeletedAt());
+
+            verify(eventRepository, never()).delete(any(Event.class));
+        }
+
+        @Test
+        void shouldDeleteEventWhenMemberIsAuthor() {
+
+            configureEventAccess(true);
+
+            Event event = feedingEvent();
+
+            when(user.getId()).thenReturn(1L);
+
+            when(petMemberService.hasRole(user, pet, Role.OWNER))
+                .thenReturn(false);
+
+            when(petMemberService.hasRole(user, pet, Role.MEMBER))
+                .thenReturn(true);
+
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            eventService.delete(PET_ID, EVENT_ID, EMAIL);
+
+            assertNotNull(event.getDeletedAt());
+
+            verify(eventRepository, never()).delete(any(Event.class));
+
         }
     }
 }
