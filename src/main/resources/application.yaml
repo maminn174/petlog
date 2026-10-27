@@ -1,11 +1,14 @@
 spring:
+  config:
+    import: "optional:file:.env[.properties]"
+
   application:
     name: petlog
 
   datasource:
-    url: jdbc:postgresql://localhost:5434/petlog
-    username: petlog
-    password: petlog_password
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/${DB_NAME:petlog}
+    username: ${DB_USER:petlog}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
