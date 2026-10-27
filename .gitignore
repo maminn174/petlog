@@ -31,3 +31,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local configuration and credentials ###
+.env
+.env.*
+!.env.example
+application-local.properties
+application-local.yml
+application-local.yaml
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
