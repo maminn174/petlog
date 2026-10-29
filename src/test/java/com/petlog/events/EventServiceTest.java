@@ -1,6 +1,7 @@
 package com.petlog.events;
 
 import com.petlog.events.dto.*;
+import com.petlog.events.exception.ActiveWalkAlreadyExistsException;
 import com.petlog.events.exception.EventNotFoundException;
 import com.petlog.events.exception.EventValidationException;
 import com.petlog.pet.Pet;
@@ -13,6 +14,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -84,9 +88,189 @@ class EventServiceTest {
             new HashMap<>(Map.of("amountGrams", 80, "comment", "Morning feeding")));
     }
 
+    private Event activeWalk() {
+        OffsetDateTime startTime = OffsetDateTime.now().minusHours(1);
+        return new Event(user, pet, EventType.WALK, startTime,
+            new HashMap<>(Map.of("startTime", startTime.toString(), "status", "ACTIVE")));
+    }
+
     private void configureRole(Role role) {
         when(petMemberService.hasRole(user, pet, Role.OWNER)).thenReturn(role == Role.OWNER);
         when(petMemberService.hasRole(user, pet, Role.MEMBER)).thenReturn(role == Role.MEMBER);
+    }
+
+    @Nested
+    class WalkLifecycle {
+
+        @ParameterizedTest
+        @NullSource
+        @ValueSource(longs = {2L})
+        void shouldStartWalkSuccessfully(Long participantId) {
+            allowCreation();
+            Long authorId = 3L;
+            Long expectedParticipantId = participantId != null ? participantId : authorId;
+            if (participantId == null) {
+                when(user.getId()).thenReturn(authorId);
+            }
+            User participant = mock(User.class);
+            when(userService.getById(expectedParticipantId)).thenReturn(participant);
+            when(petMemberService.hasAccess(participant, pet)).thenReturn(true);
+            when(eventRepository.findActiveWalkByPetId(PET_ID)).thenReturn(Optional.empty());
+            when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            OffsetDateTime beforeStart = OffsetDateTime.now();
+
+            Event result = eventService.startWalk(PET_ID, EMAIL, new StartWalkRequest(participantId));
+
+            OffsetDateTime afterStart = OffsetDateTime.now();
+            OffsetDateTime startTime = OffsetDateTime.parse((String) result.getData().get("startTime"));
+            assertSame(user, result.getCreatedBy());
+            assertSame(pet, result.getPet());
+            assertEquals(EventType.WALK, result.getType());
+            assertEquals("ACTIVE", result.getData().get("status"));
+            assertEquals(expectedParticipantId, result.getData().get("participantId"));
+            assertEquals(startTime, result.getOccurredAt());
+            assertFalse(startTime.isBefore(beforeStart));
+            assertFalse(startTime.isAfter(afterStart));
+            assertNull(result.getData().get("endTime"));
+            verify(petMemberService).requireMemberOrOwner(user, pet);
+            verify(userService).getById(expectedParticipantId);
+            verify(petMemberService).hasAccess(participant, pet);
+            verify(eventRepository).save(result);
+        }
+
+        @Test
+        void shouldRejectStartWalkWhenAlreadyActive() {
+            allowCreation();
+            when(eventRepository.findActiveWalkByPetId(PET_ID)).thenReturn(Optional.of(activeWalk()));
+
+            assertThrows(ActiveWalkAlreadyExistsException.class,
+                () -> eventService.startWalk(PET_ID, EMAIL, new StartWalkRequest(2L)));
+
+            verify(eventRepository, never()).save(any(Event.class));
+            verify(userService, never()).getById(any());
+        }
+
+        @Test
+        void shouldRejectStartWalkWithInvalidParticipant() {
+            allowCreation();
+            User participant = mock(User.class);
+            when(eventRepository.findActiveWalkByPetId(PET_ID)).thenReturn(Optional.empty());
+            when(userService.getById(2L)).thenReturn(participant);
+            when(petMemberService.hasAccess(participant, pet)).thenReturn(false);
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.startWalk(PET_ID, EMAIL, new StartWalkRequest(2L)));
+
+            assertEquals("Participant is not a member of this pet", exception.getMessage());
+            verify(petMemberService).hasAccess(participant, pet);
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectStartWalkWhenViewer() {
+            allowCreation();
+            configureRole(Role.VIEWER);
+            doCallRealMethod().when(petMemberService).requireMemberOrOwner(user, pet);
+
+            assertThrows(AccessDeniedException.class,
+                () -> eventService.startWalk(PET_ID, EMAIL, new StartWalkRequest(null)));
+
+            verify(petMemberService).requireMemberOrOwner(user, pet);
+            verifyNoInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldFinishWalkSuccessfully() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            String startTime = (String) event.getData().get("startTime");
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            OffsetDateTime beforeFinish = OffsetDateTime.now();
+
+            EventResponse response = eventService.finishWalk(PET_ID, EVENT_ID, EMAIL);
+
+            OffsetDateTime afterFinish = OffsetDateTime.now();
+            assertEquals("FINISHED", event.getData().get("status"));
+            assertEquals(event.getData(), response.data());
+            assertEquals(startTime, event.getData().get("startTime"));
+            OffsetDateTime endTime = OffsetDateTime.parse((String) response.data().get("endTime"));
+            assertTrue(endTime.isAfter(OffsetDateTime.parse(startTime)));
+            assertFalse(endTime.isBefore(beforeFinish));
+            assertFalse(endTime.isAfter(afterFinish));
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectFinishWalkWhenNotActive() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            event.getData().put("status", "FINISHED");
+            event.getData().put("endTime", event.getOccurredAt().plusMinutes(30).toString());
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.finishWalk(PET_ID, EVENT_ID, EMAIL));
+
+            assertEquals("Walk is not active", exception.getMessage());
+            assertEquals(originalData, event.getData());
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectFinishWalkForNonWalkEvent() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = feedingEvent();
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.finishWalk(PET_ID, EVENT_ID, EMAIL));
+
+            assertEquals("Event is not a walk", exception.getMessage());
+            assertEquals(originalData, event.getData());
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectFinishWalkWhenAccessDenied() {
+            configureEventAccess(false);
+
+            assertThrows(AccessDeniedException.class,
+                () -> eventService.finishWalk(PET_ID, EVENT_ID, EMAIL));
+
+            verifyNoInteractions(eventRepository);
+        }
+
+        @Test
+        void shouldGetActiveWalkSuccessfully() {
+            allowCreation();
+            Event event = activeWalk();
+            when(eventRepository.findActiveWalkByPetId(PET_ID)).thenReturn(Optional.of(event));
+
+            Optional<Event> result = eventService.getActiveWalk(PET_ID, EMAIL);
+
+            assertEquals(Optional.of(event), result);
+            verify(petService).getByIdForUser(PET_ID, user);
+            verify(eventRepository).findActiveWalkByPetId(PET_ID);
+        }
+
+        @Test
+        void shouldReturnEmptyWhenNoActiveWalk() {
+            allowCreation();
+            when(eventRepository.findActiveWalkByPetId(PET_ID)).thenReturn(Optional.empty());
+
+            assertEquals(Optional.empty(), eventService.getActiveWalk(PET_ID, EMAIL));
+
+            verify(petService).getByIdForUser(PET_ID, user);
+            verify(eventRepository).findActiveWalkByPetId(PET_ID);
+        }
     }
 
     private void allowEventModification() {
@@ -138,7 +322,7 @@ class EventServiceTest {
         @Test
         void shouldCreateFeedingWhenOwner() {
             allowCreation();
-            configureRole(Role.OWNER);
+            when(petMemberService.hasRole(user, pet, Role.OWNER)).thenReturn(true);
             doCallRealMethod().when(petMemberService).requireMemberOrOwner(user, pet);
             CreateFeedingRequest request = new CreateFeedingRequest(80, Appetite.GOOD, "Morning feeding", OCCURRED_AT);
             Map<String, Object> expectedData = Map.of(
@@ -234,7 +418,7 @@ class EventServiceTest {
             CreateWalkRequest request = new CreateWalkRequest(OCCURRED_AT, endTime, participantId, "Park walk");
             Map<String, Object> expectedData = Map.of(
                 "startTime", OCCURRED_AT.toString(), "endTime", endTime.toString(),
-                "participantId", participantId, "comment", "Park walk"
+                "participantId", participantId, "comment", "Park walk", "status", "FINISHED"
             );
             when(userService.getById(participantId)).thenReturn(participant);
             when(petMemberService.hasAccess(participant, pet)).thenReturn(true);
@@ -441,7 +625,9 @@ class EventServiceTest {
             User participant = mock(User.class);
             Map<String, Object> originalData = Map.of(
                 "startTime", OCCURRED_AT.toString(),
-                "endTime", OCCURRED_AT.plusMinutes(30).toString(), "comment", "Park walk"
+                "endTime", OCCURRED_AT.plusMinutes(30).toString(),
+                "comment", "Park walk",
+                "status", "FINISHED"
             );
             Event event = new Event(user, pet, EventType.WALK, OCCURRED_AT, new HashMap<>(originalData));
             when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
@@ -451,7 +637,7 @@ class EventServiceTest {
             Map<String, Object> expectedData = new HashMap<>(originalData);
             expectedData.put("participantId", participantId);
             UpdateEventRequest request = new UpdateEventRequest(
-                OCCURRED_AT.plusHours(1), Map.of("participantId", participantId)
+                null, Map.of("participantId", participantId)
             );
 
             EventValidationException exception = assertThrows(EventValidationException.class,
@@ -511,6 +697,187 @@ class EventServiceTest {
                 () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
 
             verifyNoInteractions(eventRepository, eventValidator);
+        }
+
+        @Test
+        void shouldRejectOccurredAtUpdateForActiveWalk() {
+            configureEventAccess(true);
+            allowEventModification();
+
+            Event event = activeWalk();
+            OffsetDateTime originalOccurredAt = event.getOccurredAt();
+
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+
+            UpdateEventRequest request = new UpdateEventRequest(
+                originalOccurredAt.plusMinutes(10),
+                null
+            );
+
+            EventValidationException exception = assertThrows(
+                EventValidationException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request)
+            );
+
+            assertEquals(
+                "Walk occurredAt cannot be updated directly",
+                exception.getMessage()
+            );
+            assertEquals(originalOccurredAt, event.getOccurredAt());
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectStatusUpdateForWalk() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            OffsetDateTime originalOccurredAt = event.getOccurredAt();
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(null, Map.of("status", "FINISHED"));
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
+
+            assertEquals("Walk status cannot be updated directly", exception.getMessage());
+            assertEquals(originalData, event.getData());
+            assertEquals(originalOccurredAt, event.getOccurredAt());
+            verifyNoInteractions(eventValidator);
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectStartTimeUpdateForActiveWalk() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            OffsetDateTime originalOccurredAt = event.getOccurredAt();
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(null,
+                Map.of("startTime", originalOccurredAt.plusMinutes(10).toString()));
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
+
+            assertEquals("Cannot modify startTime or endTime of an active walk", exception.getMessage());
+            assertEquals(originalData, event.getData());
+            assertEquals(originalOccurredAt, event.getOccurredAt());
+            verifyNoInteractions(eventValidator);
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldRejectEndTimeUpdateForActiveWalk() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            OffsetDateTime originalOccurredAt = event.getOccurredAt();
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(null,
+                Map.of("endTime", originalOccurredAt.plusMinutes(30).toString()));
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
+
+            assertEquals("Cannot modify startTime or endTime of an active walk", exception.getMessage());
+            assertEquals(originalData, event.getData());
+            assertEquals(originalOccurredAt, event.getOccurredAt());
+            verifyNoInteractions(eventValidator);
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldUpdateActiveWalkCommentSuccessfully() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            event.getData().put("comment", "Original comment");
+            OffsetDateTime originalOccurredAt = event.getOccurredAt();
+            Map<String, Object> expectedData = new HashMap<>(event.getData());
+            expectedData.put("comment", "Updated comment");
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(null, Map.of("comment", "Updated comment"));
+
+            EventResponse response = eventService.update(PET_ID, EVENT_ID, EMAIL, request);
+
+            assertEquals(expectedData, event.getData());
+            assertEquals(expectedData, response.data());
+            assertEquals(originalOccurredAt, event.getOccurredAt());
+            assertEquals(originalOccurredAt, response.occurredAt());
+            verify(eventValidator).validateWalk(expectedData);
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldUpdateFinishedWalkTimeSuccessfully() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            event.getData().put("status", "FINISHED");
+            event.getData().put("endTime", event.getOccurredAt().plusMinutes(30).toString());
+            event.getData().put("comment", "Park walk");
+            OffsetDateTime newStartTime = event.getOccurredAt().minusMinutes(10);
+            OffsetDateTime newEndTime = newStartTime.plusMinutes(45);
+            Map<String, Object> timeUpdates = Map.of(
+                "startTime", newStartTime.toString(),
+                "endTime", newEndTime.toString()
+            );
+            Map<String, Object> expectedData = new HashMap<>(event.getData());
+            expectedData.putAll(timeUpdates);
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            UpdateEventRequest request = new UpdateEventRequest(null, timeUpdates);
+
+            EventResponse response = eventService.update(PET_ID, EVENT_ID, EMAIL, request);
+
+            assertEquals(expectedData, event.getData());
+            assertEquals(expectedData, response.data());
+            assertEquals(newStartTime, event.getOccurredAt());
+            assertEquals(newStartTime, response.occurredAt());
+            assertEquals(event.getOccurredAt(), OffsetDateTime.parse((String) event.getData().get("startTime")));
+            verify(eventValidator).validateWalk(expectedData);
+            verify(eventRepository, never()).save(any(Event.class));
+        }
+
+        @Test
+        void shouldNotModifyWalkTimeWhenParticipantValidationFails() {
+            configureEventAccess(true);
+            allowEventModification();
+            Event event = activeWalk();
+            event.getData().put("status", "FINISHED");
+            event.getData().put("endTime", event.getOccurredAt().plusMinutes(30).toString());
+            OffsetDateTime originalOccurredAt = event.getOccurredAt();
+            Map<String, Object> originalData = new HashMap<>(event.getData());
+            Long participantId = 2L;
+            User participant = mock(User.class);
+            when(eventRepository.findByDeletedAtIsNullAndIdAndPet_Id(EVENT_ID, PET_ID))
+                .thenReturn(Optional.of(event));
+            when(userService.getById(participantId)).thenReturn(participant);
+            when(petMemberService.hasAccess(participant, pet)).thenReturn(false);
+            UpdateEventRequest request = new UpdateEventRequest(null, Map.of(
+                "startTime", originalOccurredAt.minusMinutes(10).toString(),
+                "participantId", participantId
+            ));
+            Map<String, Object> mergedData = new HashMap<>(originalData);
+            mergedData.putAll(request.data());
+
+            EventValidationException exception = assertThrows(EventValidationException.class,
+                () -> eventService.update(PET_ID, EVENT_ID, EMAIL, request));
+
+            assertEquals("Participant is not a member of this pet", exception.getMessage());
+            assertEquals(originalOccurredAt, event.getOccurredAt());
+            assertEquals(originalData, event.getData());
+            verify(eventValidator).validateWalk(mergedData);
+            verify(petMemberService).hasAccess(participant, pet);
+            verify(eventRepository, never()).save(any(Event.class));
         }
     }
 

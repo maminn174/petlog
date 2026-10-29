@@ -1,18 +1,38 @@
 package com.petlog.common.exception;
 
 import com.petlog.auth.exception.EmailAlreadyExistsException;
+import com.petlog.events.exception.ActiveWalkAlreadyExistsException;
 import com.petlog.events.exception.EventNotFoundException;
 import com.petlog.events.exception.EventValidationException;
+import org.hibernate.exception.ConstraintViolationException;
+import org.jspecify.annotations.NonNull;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrityViolation(
+        @NonNull DataIntegrityViolationException ex
+    ) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation
+                && "uq_events_active_walk_per_pet".equals(violation.getConstraintName())) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(
+                    HttpStatus.CONFLICT.value(),
+                    "Pet already has active walk"
+                ));
+            }
+        }
+        throw ex;
+    }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiError> accessDeniedException(AccessDeniedException ex) {
@@ -60,9 +80,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<ApiError> badCredentialsException(
-        BadCredentialsException ex
-    ) {
+    public ResponseEntity<ApiError> badCredentialsException() {
         HttpStatus status = HttpStatus.UNAUTHORIZED;
 
         ApiError apiError = new ApiError(
@@ -96,6 +114,22 @@ public class GlobalExceptionHandler {
         EventValidationException ex
     ) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            ex.getMessage()
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+
+    @ExceptionHandler(ActiveWalkAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleActiveWalkAlreadyExists(
+        ActiveWalkAlreadyExistsException ex
+    ) {
+        HttpStatus status = HttpStatus.CONFLICT;
 
         ApiError apiError = new ApiError(
             status.value(),

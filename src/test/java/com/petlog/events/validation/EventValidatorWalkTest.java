@@ -41,10 +41,72 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime", "2026-10-22T10:00:00+03:00",
-            "endTime", "2026-10-22T11:00:00+03:00"
+            "endTime", "2026-10-22T11:00:00+03:00",
+            "status", "FINISHED"
         );
 
         assertDoesNotThrow(() -> validator.validateWalk(data));
+    }
+
+    @Test
+    void shouldAcceptValidActiveWalk() {
+
+        Map<String, Object> data = Map.of(
+            "startTime", "2026-10-22T10:00:00+03:00",
+            "status", "ACTIVE"
+        );
+
+        assertDoesNotThrow(() -> validator.validateWalk(data));
+    }
+
+    @Test
+    void shouldRejectActiveWalkWithEndTime() {
+
+        Map<String, Object> data = Map.of(
+            "startTime", "2026-10-22T10:00:00+03:00",
+            "endTime", "2026-10-22T11:00:00+03:00",
+            "status", "ACTIVE"
+        );
+
+        EventValidationException exception = assertThrows(
+            EventValidationException.class,
+            () -> validator.validateWalk(data)
+        );
+
+        assertEquals("Active walk cannot have endTime", exception.getMessage());
+    }
+
+    @Test
+    void shouldRejectWalkWithInvalidStatus() {
+
+        Map<String, Object> data = Map.of(
+            "startTime", "2026-10-22T10:00:00+03:00",
+            "endTime", "2026-10-22T11:00:00+03:00",
+            "status", "INVALID"
+        );
+
+        EventValidationException exception = assertThrows(
+            EventValidationException.class,
+            () -> validator.validateWalk(data)
+        );
+
+        assertEquals("Invalid walk status", exception.getMessage());
+    }
+
+    @Test
+    void shouldRejectWalkWithoutStatus() {
+
+        Map<String, Object> data = Map.of(
+            "startTime", "2026-10-22T10:00:00+03:00",
+            "endTime", "2026-10-22T11:00:00+03:00"
+        );
+
+        EventValidationException exception = assertThrows(
+            EventValidationException.class,
+            () -> validator.validateWalk(data)
+        );
+
+        assertEquals("Walk status must be a string", exception.getMessage());
     }
 
     @Test
@@ -52,7 +114,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime", "2026-10-22T10:00:00+03:00",
-            "endTime", "2026-10-22T10:30:00+02:00"
+            "endTime", "2026-10-22T10:30:00+02:00",
+            "status", "FINISHED"
         );
 
         assertDoesNotThrow(() -> validator.validateWalk(data));
@@ -63,7 +126,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime", "2026-10-22T10:00:00+03:00",
-            "endTime",   "2026-10-22T09:30:00+03:00"
+            "endTime",   "2026-10-22T09:30:00+03:00",
+            "status", "FINISHED"
         );
 
         EventValidationException exception = assertThrows(
@@ -79,7 +143,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime", "2026-10-22T10:00:00+03:00",
-            "endTime",   "2026-10-22T10:00:00+03:00"
+            "endTime",   "2026-10-22T10:00:00+03:00",
+            "status", "FINISHED"
         );
 
         EventValidationException exception = assertThrows(
@@ -109,7 +174,8 @@ class EventValidatorWalkTest {
     void shouldRejectMissingEndTime() {
 
         Map<String, Object> data = Map.of(
-            "startTime",   "2026-10-22T10:00:00+03:00"
+            "startTime",   "2026-10-22T10:00:00+03:00",
+            "status", "FINISHED"
         );
 
         EventValidationException exception = assertThrows(
@@ -117,7 +183,7 @@ class EventValidatorWalkTest {
             () -> validator.validateWalk(data)
         );
 
-        assertEquals("endTime must be a string", exception.getMessage());
+        assertEquals("Finished walk should have endTime", exception.getMessage());
     }
 
     @ParameterizedTest
@@ -153,7 +219,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime",   "2026-10-22T10:00:00+03:00",
-            "endTime",   date
+            "endTime",   date,
+            "status", "FINISHED"
         );
 
         EventValidationException exception = assertThrows(
@@ -169,7 +236,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime",   "2026-10-22T10:00:00+03:00",
-            "endTime",   123
+            "endTime",   123,
+            "status", "FINISHED"
         );
 
         EventValidationException exception = assertThrows(
@@ -185,7 +253,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime", "2026-10-22T23:30:00+03:00",
-            "endTime", "2026-10-23T00:15:00+03:00"
+            "endTime", "2026-10-23T00:15:00+03:00",
+            "status", "FINISHED"
         );
 
         assertDoesNotThrow(() -> validator.validateWalk(data));
@@ -196,7 +265,8 @@ class EventValidatorWalkTest {
 
         Map<String, Object> data = Map.of(
             "startTime", "2026-10-22T10:00:00+02:00",
-            "endTime", "2026-10-22T10:30:00+03:00"
+            "endTime", "2026-10-22T10:30:00+03:00",
+            "status", "FINISHED"
         );
 
         EventValidationException exception = assertThrows(
