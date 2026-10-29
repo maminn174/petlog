@@ -47,4 +47,4 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: sh ./mnw --batch-mode verify
+        run: sh ./mvnw --batch-mode verify
