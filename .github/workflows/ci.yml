@@ -1,0 +1,50 @@
+name: PetLog CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: petlog
+          POSTGRES_USER: petlog
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U petlog -d petlog"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: petlog
+      DB_USER: petlog
+      DB_PASSWORD: testpassword
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and test
+        run: sh ./mnw --batch-mode verify
