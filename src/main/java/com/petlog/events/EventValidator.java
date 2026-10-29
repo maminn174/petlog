@@ -107,16 +107,45 @@ public class EventValidator {
 
         Object startTime = data.get("startTime");
         Object endTime = data.get("endTime");
+        Object status = data.get("status");
 
         validateParticipantId(data.get("participantId"));
 
         OffsetDateTime parsedStartTime = parseDateTime(startTime, "startTime");
-        OffsetDateTime parsedEndTime = parseDateTime(endTime, "endTime");
 
-        if (!parsedEndTime.isAfter(parsedStartTime)) {
+        if (!(status instanceof String walkStatus)) {
             throw new EventValidationException(
-                "endTime must be after startTime"
+                "Walk status must be a string"
             );
+        }
+
+        switch (walkStatus) {
+            case "ACTIVE" -> {
+                if (endTime != null) {
+                    throw new EventValidationException(
+                        "Active walk cannot have endTime"
+                    );
+                }
+            }
+            case "FINISHED" -> {
+                if (endTime == null) {
+                    throw new EventValidationException(
+                        "Finished walk should have endTime"
+                    );
+                }
+
+                OffsetDateTime parsedEndTime = parseDateTime(endTime, "endTime");
+
+                if (!parsedEndTime.isAfter(parsedStartTime)) {
+                    throw new EventValidationException(
+                        "endTime must be after startTime"
+                    );
+                }
+            }
+            default -> throw new EventValidationException(
+                "Invalid walk status"
+            );
+
         }
     }
 

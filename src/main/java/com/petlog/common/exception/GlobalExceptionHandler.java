@@ -1,12 +1,13 @@
 package com.petlog.common.exception;
 
 import com.petlog.auth.exception.EmailAlreadyExistsException;
+import com.petlog.events.exception.ActiveWalkAlreadyExistsException;
 import com.petlog.events.exception.EventNotFoundException;
 import com.petlog.events.exception.EventValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -60,9 +61,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<ApiError> badCredentialsException(
-        BadCredentialsException ex
-    ) {
+    public ResponseEntity<ApiError> badCredentialsException() {
         HttpStatus status = HttpStatus.UNAUTHORIZED;
 
         ApiError apiError = new ApiError(
@@ -96,6 +95,22 @@ public class GlobalExceptionHandler {
         EventValidationException ex
     ) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        ApiError apiError = new ApiError(
+            status.value(),
+            ex.getMessage()
+        );
+
+        return ResponseEntity
+            .status(status)
+            .body(apiError);
+    }
+
+    @ExceptionHandler(ActiveWalkAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleActiveWalkAlreadyExists(
+        ActiveWalkAlreadyExistsException ex
+    ) {
+        HttpStatus status = HttpStatus.CONFLICT;
 
         ApiError apiError = new ApiError(
             status.value(),

@@ -1,6 +1,7 @@
 package com.petlog.events;
 
 import com.petlog.events.dto.*;
+import com.petlog.events.exception.ActiveWalkAlreadyExistsException;
 import com.petlog.events.exception.EventNotFoundException;
 import com.petlog.events.exception.EventValidationException;
 import com.petlog.pet.Pet;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class EventService {
@@ -236,6 +238,8 @@ public class EventService {
             request.comment()
         );
 
+        data.put("status", "FINISHED");
+
         eventValidator.validateWalk(data);
 
         Event event = new Event(
@@ -271,8 +275,35 @@ public class EventService {
 
         requireCanModifyEvent(user, event);
 
+        if (event.getType() == EventType.WALK
+            && request.occurredAt() != null) {
+            throw new EventValidationException(
+                "Walk occurredAt cannot be updated directly"
+            );
+        }
+
         if (request.data() != null) {
             Map<String, Object> currentData = new HashMap<>(event.getData());
+
+            if (event.getType() == EventType.WALK) {
+                if (request.data().containsKey("status")) {
+                    throw new EventValidationException(
+                        "Walk status cannot be updated directly"
+                    );
+                }
+
+                String status = (String) event.getData().get("status");
+
+                if ("ACTIVE".equals(status)) {
+                    if (request.data().containsKey("startTime")
+                        || request.data().containsKey("endTime")) {
+                        throw new EventValidationException(
+                            "Cannot modify startTime or endTime of an active walk"
+                        );
+                    }
+                }
+            }
+
             currentData.putAll(request.data());
 
             switch (event.getType()) {
@@ -297,6 +328,16 @@ public class EventService {
                 }
             }
 
+            if (event.getType() == EventType.WALK
+                && request.data().containsKey("startTime")) {
+
+                OffsetDateTime startTime = OffsetDateTime.parse(
+                    (String) currentData.get("startTime")
+                );
+
+                event.setOccurredAt(startTime);
+            }
+
             event.setData(currentData);
         }
 
@@ -317,6 +358,89 @@ public class EventService {
         requireCanModifyEvent(userService.getByEmail(email), event);
 
         event.setDeletedAt(OffsetDateTime.now());
+    }
+
+    @Transactional
+    public Event startWalk(
+        Long petId,
+        String email,
+        StartWalkRequest request
+    ) {
+        User user = userService.getByEmail(email);
+
+        Pet pet = petService.getByIdForUser(petId, user);
+
+        petMemberService.requireMemberOrOwner(user, pet);
+
+        if (eventRepository.findActiveWalkByPetId(petId).isPresent()) {
+            throw new ActiveWalkAlreadyExistsException(petId);
+        }
+
+        Long participantId = request.participantId() != null
+            ? request.participantId()
+            : user.getId();
+
+        User participant = userService.getById(participantId);
+
+        if (!petMemberService.hasAccess(participant, pet)) {
+            throw new EventValidationException(
+                "Participant is not a member of this pet"
+            );
+        }
+
+        OffsetDateTime startTime = OffsetDateTime.now();
+
+        Map<String, Object> data = new HashMap<>();
+
+        data.put("startTime", startTime.toString());
+        data.put("endTime", null);
+        data.put("status", "ACTIVE");
+        data.put("participantId", participantId);
+
+        Event event = new Event(
+            user,
+            pet,
+            EventType.WALK,
+            startTime,
+            data
+        );
+
+        return eventRepository.save(event);
+    }
+
+    @Transactional
+    public EventResponse finishWalk(
+        Long petId,
+        Long eventId,
+        String email
+    ) {
+        Event event = getEventForUser(petId, eventId, email);
+        User user = userService.getByEmail(email);
+        requireCanModifyEvent(user, event);
+
+        if (event.getType() != EventType.WALK) {
+            throw new EventValidationException(
+                "Event is not a walk"
+            );
+        }
+
+        String status = (String) event.getData().get("status");
+
+        if(!"ACTIVE".equals(status)) {
+            throw new EventValidationException(
+                "Walk is not active"
+            );
+        }
+
+        Map<String, Object> data = new HashMap<>(event.getData());
+
+        OffsetDateTime endTime = OffsetDateTime.now();
+
+        data.put("endTime", endTime.toString());
+        data.put("status", "FINISHED");
+        event.setData(data);
+
+        return EventResponse.from(event);
     }
 
     private Event getEventForUser(
@@ -351,5 +475,15 @@ public class EventService {
         if (!(isOwner || (isMember && isAuthor))) {
             throw new AccessDeniedException("Access denied");
         }
+    }
+
+    public Optional<Event> getActiveWalk(
+        Long petId,
+        String email
+    ) {
+        User user = userService.getByEmail(email);
+        petService.getByIdForUser(petId, user);
+
+        return eventRepository.findActiveWalkByPetId(petId);
     }
 }

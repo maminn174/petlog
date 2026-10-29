@@ -4,6 +4,7 @@ import com.petlog.events.dto.*;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -129,5 +130,43 @@ public class EventController {
     ) {
         String email = authentication.getName();
         eventService.delete(petId, eventId, email);
+    }
+
+    @PostMapping("/walk/start")
+    @ResponseStatus(HttpStatus.CREATED)
+    public EventResponse startWalk(
+        @PathVariable Long petId,
+        @Valid @RequestBody StartWalkRequest request,
+        Authentication authentication
+    ) {
+        String email = authentication.getName();
+
+        Event event = eventService.startWalk(petId, email, request);
+
+        return EventResponse.from(event);
+    }
+
+    @PatchMapping("/{eventId}/finish")
+    public EventResponse finishWalk(
+        @PathVariable Long petId,
+        @PathVariable Long eventId,
+        Authentication authentication
+    ) {
+        String email = authentication.getName();
+
+        return eventService.finishWalk(petId, eventId, email);
+    }
+
+    @GetMapping("/walk/active")
+    public ResponseEntity<EventResponse> getActiveWalk(
+        @PathVariable Long petId,
+        Authentication authentication
+
+    ) {
+        String email = authentication.getName();
+
+        return eventService.getActiveWalk(petId, email)
+            .map(event -> ResponseEntity.ok(EventResponse.from(event)))
+            .orElseGet(() -> ResponseEntity.noContent().build());
     }
 }
