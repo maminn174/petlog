@@ -6,6 +6,7 @@ import com.petlog.petmember.dto.PetMemberResponse;
 import com.petlog.petmember.dto.UpdateRoleRequest;
 import com.petlog.user.User;
 import com.petlog.user.UserRepository;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -14,6 +15,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
+@Tag(
+    name = "Pet Members",
+    description = "Pet member management, roles and access permissions"
+)
 @RestController
 @RequestMapping("/api/pets/{petId}/members")
 public class PetMemberController {
