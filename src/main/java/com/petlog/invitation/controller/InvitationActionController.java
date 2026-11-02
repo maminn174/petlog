@@ -3,11 +3,16 @@ package com.petlog.invitation.controller;
 import com.petlog.invitation.PetInvitation;
 import com.petlog.invitation.PetInvitationService;
 import com.petlog.invitation.dto.PetInvitationResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Tag(
+    name = "Invitations",
+    description = "Pet invitations, acceptance and rejection"
+)
 @RestController
 @RequestMapping("/api/invitations")
 public class InvitationActionController {
