@@ -1,8 +1,11 @@
 import PetCard from '@/components/pets/PetCard'
+import { Button } from '@/components/ui/button'
+import { useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { getPets } from '@/api/pets'
 
 function PetsPage() {
+  const navigate = useNavigate()
 
   const {
     data: pets,
@@ -24,6 +27,8 @@ function PetsPage() {
   return (
     <div>
       <h1>Мои питомцы</h1>
+
+      <Button onClick={() => navigate('/pets/new')}>Добавить питомца</Button>
 
       {pets.length === 0 && <h2>У вас пока нет питомцев</h2>}
 
