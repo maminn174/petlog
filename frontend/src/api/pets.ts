@@ -1,7 +1,7 @@
 import { apiClient } from '@/api/client'
 import { getCsrfToken } from '@/api/auth'
 
-type Gender = 'MALE' | 'FEMALE' | 'UNKNOWN'
+export type Gender = 'MALE' | 'FEMALE' | 'UNKNOWN'
 
 export type Pet = {
   id: number
@@ -23,6 +23,8 @@ export type CreatePetRequest = {
   birthDate: string | null
 }
 
+export type UpdatePetRequest = Partial<CreatePetRequest>
+
 export const getPets = async () => {
   const response = await apiClient.get<Pet[]>('/pets')
 
@@ -39,6 +41,28 @@ export const createPet = async (data: CreatePetRequest): Promise<Pet> => {
         [csrf.headerName]: csrf.token,
       },
     })
+
+  return response.data
+}
+
+export const getPetById = async (id: number): Promise<Pet> => {
+  const response = await apiClient.get<Pet>(`/pets/${id}`)
+
+  return response.data
+}
+
+export const updatePet = async (
+  id: number,
+  data: UpdatePetRequest
+): Promise<Pet> => {
+  const csrf = await getCsrfToken()
+  const response = await apiClient.patch<Pet>(`/pets/${id}`,
+    data,
+    {
+    headers: {
+      [csrf.headerName]: csrf.token,
+    },
+  })
 
   return response.data
 }
