@@ -3,6 +3,7 @@ import LoginPage from '@/pages/LoginPage'
 import PetsPage from '@/pages/PetsPage'
 import AppLayout from '@/layouts/AppLayout'
 import SettingsPage from '@/pages/SettingsPage'
+import CreatePetPage from '@/pages/CreatePetPage'
 import ProtectedRoute from '@/components/auth/ProtectedRoute'
 
 export const router = createBrowserRouter([
@@ -19,6 +20,10 @@ export const router = createBrowserRouter([
           {
             path: '/pets',
             element: <PetsPage />,
+          },
+          {
+            path: '/pets/new',
+            element: <CreatePetPage />,
           },
           {
             path: '/settings',
