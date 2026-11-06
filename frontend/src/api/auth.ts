@@ -44,3 +44,17 @@ export const login = async (data: LoginRequest) => {
 
   return response.data
 }
+
+export const logout = async (): Promise<void> => {
+  const csrf = await getCsrfToken()
+
+  await apiClient.post(
+    '/auth/logout',
+    null,
+    {
+      headers: {
+        [csrf.headerName]: csrf.token,
+      },
+    },
+  )
+}
