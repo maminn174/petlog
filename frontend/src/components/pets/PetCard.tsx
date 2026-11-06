@@ -1,4 +1,5 @@
 import { PawPrint } from 'lucide-react'
+import { Link } from 'react-router'
 
 type PetCardProps = {
   id: number
@@ -6,16 +7,12 @@ type PetCardProps = {
   photo: string | null
 }
 
-function PetCard({ name, photo }: PetCardProps) {
-  return(
-    <div>
-      <h2>{name}</h2>
-      {photo ? (
-        <img src={photo} alt={name} />
-      ) : (
-        <PawPrint size={32} />
-      )}
-    </div>
+function PetCard({ id, name, photo }: PetCardProps) {
+  return (
+    <Link to={`/pets/${id}`}>
+        <h2>{name}</h2>
+        {photo ? <img src={photo} alt={name} /> : <PawPrint size={32} />}
+    </Link>
   )
 }
 

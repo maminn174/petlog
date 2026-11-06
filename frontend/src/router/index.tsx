@@ -5,6 +5,8 @@ import AppLayout from '@/layouts/AppLayout'
 import SettingsPage from '@/pages/SettingsPage'
 import CreatePetPage from '@/pages/CreatePetPage'
 import ProtectedRoute from '@/components/auth/ProtectedRoute'
+import PetDetailsPage from '@/pages/PetDetailsPage'
+import EditPetPage from '@/pages/EditPetPage'
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +30,14 @@ export const router = createBrowserRouter([
           {
             path: '/settings',
             element: <SettingsPage />,
+          },
+          {
+            path: '/pets/:id',
+            element: <PetDetailsPage />,
+          },
+          {
+            path: '/pets/:id/edit',
+            element: <EditPetPage />,
           },
         ],
       },

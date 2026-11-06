@@ -24,7 +24,7 @@ function CreatePetPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const createPetMutatuon = useMutation({
+  const createPetMutation = useMutation({
     mutationFn: createPet,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -57,7 +57,7 @@ function CreatePetPage() {
       birthDate: data.birthDate || null,
     }
 
-    createPetMutatuon.mutate(payload)
+    createPetMutation.mutate(payload)
   }
 
 
@@ -97,14 +97,14 @@ function CreatePetPage() {
 
         <Button
           type="submit"
-          disabled={createPetMutatuon.isPending}
+          disabled={createPetMutation.isPending}
         >
-          {createPetMutatuon.isPending
+          {createPetMutation.isPending
             ? 'Сохранение...'
             : 'Создать питомца'
           }
         </Button>
-        {createPetMutatuon.isError && (
+        {createPetMutation.isError && (
           <p role="alert">Не удалось создать питомца. Попробуйте еще раз.</p>
         )}
       </form>
