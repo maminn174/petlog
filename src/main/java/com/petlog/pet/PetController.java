@@ -48,6 +48,9 @@ public class PetController {
         Pet pet = petService.create(
             request.name(),
             request.species(),
+            request.breed(),
+            request.gender(),
+            request.birthDate(),
             user
         );
 

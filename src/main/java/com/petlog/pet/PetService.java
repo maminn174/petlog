@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+
 @Service
 public class PetService {
 
@@ -29,12 +31,20 @@ public class PetService {
     public Pet create(
         String name,
         String species,
+        String breed,
+        Gender gender,
+        LocalDate birthDate,
         User user
     ) {
         Pet pet = new Pet(
             name,
             species
         );
+
+        pet.setBreed(breed);
+        pet.setGender(gender);
+        pet.setBirthDate(birthDate);
+
         Pet savedPet = petRepository.save(pet);
 
         petMemberService.create(
